@@ -1,0 +1,46 @@
+name: Pack browser extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_github:
+        type: boolean
+        description: Release on GitHub
+        default: true
+
+jobs:
+  pack:
+    environment: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Format with prettier
+        uses: creyD/prettier_action@v4.3
+        with:
+          prettier_options: --config .prettierrc.json --write . --list-different
+          commit_options: --dry-run
+          push_options: --dry-run
+
+      - name: Create zip file for Chrome Web Store
+        run: |
+          export version=$(jq -r '.version' extension/manifest.json)
+          echo "version=$version" >> "$GITHUB_ENV"
+          cd extension || exit 2
+          zip -q -r "../extension_${version}_chrome.zip" .
+          cd ..
+
+      - name: Create development version zip file
+        run: |
+          sed -i "/^const API_ENDPOINT_BASE/s|'[^']*'|'https://api.develop.example.com'|g" extension/index.js
+          cd extension || exit 2
+          zip -q -r "../extension_${version}_chrome_dev.zip" .
+          cd ..
+
+      - name: GitHub Release
+        uses: ncipollo/release-action@v1
+        if: ${{ inputs.release_github }}
+        with:
+          artifacts: "extension_${{ env.version }}_chrome.zip,extension_${{ env.version }}_chrome_dev.zip"
+          name: "Release v${{ env.version }}"
+          tag: "${{ env.version }}"
+          token: ${{ secrets.GH_TOKEN }}
